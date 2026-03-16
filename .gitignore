@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+data/cache/
+data/mumucd/
+checkpoints/
+runs/
+*.h5
+*.hdf5
+.DS_Store
