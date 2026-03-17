@@ -41,7 +41,7 @@ if ! command -v zenodo_get &>/dev/null; then
 fi
 
 echo "Downloading PRISMA archives from Zenodo record ${RECORD_ID}..."
-zenodo_get "${RECORD_ID}" --record-filter "*prisma*" -o "${DEST}"
+zenodo_get "${RECORD_ID}" -o "${DEST}"
 
 # Extract any archives found
 echo "Extracting archives..."
@@ -52,5 +52,5 @@ for f in "${DEST}"/*.tar "${DEST}"/*.tar.gz "${DEST}"/*.tgz; do
 done
 
 echo ""
-echo "Done. PRISMA GeoTIFFs should now be in: ${DEST}/"
-echo "Verify with: ls ${DEST}/*.tif | wc -l  (expect ~70 files)"
+echo "Done. PRISMA scenes should now be in: ${DEST}/"
+echo "Verify with: find ${DEST} -name '*prs*.nc' | wc -l  (expect ~140 before/after files)"

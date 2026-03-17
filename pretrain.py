@@ -106,14 +106,14 @@ def ssl_collate_fn(batch, augmentation: Pix2RepAugmentation):
     Returns:
         v:         (B, C, H, W)
         v_prime:   (B, C, H, W)
-        theta_inv: (B, 2, 3)
+        theta_vprime_to_v: (B, 2, 3)
     """
     vs, vps, thetas = [], [], []
     for patch in batch:
-        v, vp, theta_inv = augmentation(patch)
+        v, vp, theta_vprime_to_v = augmentation(patch)
         vs.append(v)
         vps.append(vp)
-        thetas.append(theta_inv.squeeze(0))     # (2, 3)
+        thetas.append(theta_vprime_to_v.squeeze(0))  # (2, 3)
     return (
         torch.stack(vs),                        # (B, C, H, W)
         torch.stack(vps),                       # (B, C, H, W)
@@ -129,7 +129,7 @@ def train(cfg: Config, resume_from: str | None = None):
     log.info(f"Device: {device}")
 
     # ── Dataset ───────────────────────────────────────────────────────────────
-    cache_path = cfg.cache_dir / "mumucd_patches.h5" if cfg.cache_dir else None
+    cache_path = cfg.cache_dir / "mumucd_patches.h5" if cfg.use_cache else None
     dataset = MUMUCDPatchDataset(
         data_root=cfg.data_root,
         patch_size=cfg.patch_size,
@@ -147,6 +147,8 @@ def train(cfg: Config, resume_from: str | None = None):
         num_workers=cfg.num_workers,
         pin_memory=cfg.pin_memory,
         drop_last=True,
+        persistent_workers=cfg.num_workers > 0,
+        prefetch_factor=4 if cfg.num_workers > 0 else None,
         collate_fn=lambda b: ssl_collate_fn(b, augmentation),
     )
 
@@ -163,16 +165,33 @@ def train(cfg: Config, resume_from: str | None = None):
         proj_dim=cfg.proj_dim,
     ).to(device)
 
+    # ── torch.compile for H100 speedup ─────────────────────────────────────────
+    if torch.cuda.is_available() and hasattr(torch, 'compile'):
+        log.info("Compiling backbone and head with torch.compile...")
+        backbone = torch.compile(backbone)
+        head = torch.compile(head)
+
     total_params = sum(p.numel() for p in backbone.parameters()) + \
                    sum(p.numel() for p in head.parameters())
     log.info(f"Parameters: {total_params / 1e6:.1f} M")
 
     # ── Optimiser / scheduler ─────────────────────────────────────────────────
+    # Linear LR scaling rule: scale LR proportional to batch_size increase
+    base_bs = 8
+    scaled_lr = cfg.lr * (cfg.batch_size / base_bs)
+    log.info(f"LR scaled: {cfg.lr:.2e} → {scaled_lr:.2e} (batch {base_bs}→{cfg.batch_size})")
+
     params = list(backbone.parameters()) + list(head.parameters())
-    optimiser = torch.optim.Adam(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+    optimiser = torch.optim.Adam(params, lr=scaled_lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimiser, T_max=cfg.t_max, eta_min=cfg.lr * 0.01,
+        optimiser, T_max=cfg.t_max, eta_min=scaled_lr * 0.01,
     )
+
+    # ── AMP (mixed precision bfloat16 for H100) ──────────────────────────────
+    use_amp = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    amp_dtype = torch.bfloat16 if use_amp else torch.float32
+    scaler = torch.amp.GradScaler(enabled=(use_amp and amp_dtype == torch.float16))
+    log.info(f"AMP: {use_amp} (dtype={amp_dtype})")
 
     # ── Loss ──────────────────────────────────────────────────────────────────
     criterion = PixelBarlowTwinsLoss(
@@ -203,21 +222,24 @@ def train(cfg: Config, resume_from: str | None = None):
         head.train()
         epoch_loss = 0.0
 
-        for batch_idx, (v, v_prime, _theta_inv) in enumerate(loader, 1):
-            v       = v.to(device, non_blocking=True)
+        for batch_idx, (v, v_prime, theta_vprime_to_v) in enumerate(loader, 1):
+            v = v.to(device, non_blocking=True)
             v_prime = v_prime.to(device, non_blocking=True)
+            theta_vprime_to_v = theta_vprime_to_v.to(device, non_blocking=True)
 
-            # Forward
-            z       = head(backbone(v))           # (B, D, H, W)
-            z_prime = head(backbone(v_prime))     # (B, D, H, W)
-
-            loss = criterion(z, z_prime)
+            # Forward with AMP
+            with torch.amp.autocast('cuda', dtype=amp_dtype, enabled=use_amp):
+                z = head(backbone(v))                 # (B, D, H, W)
+                z_prime = head(backbone(v_prime))     # (B, D, H, W)
+                loss = criterion(z, z_prime, theta_vprime_to_v=theta_vprime_to_v)
 
             # Backward
             optimiser.zero_grad(set_to_none=True)
-            loss.backward()
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimiser)
             nn.utils.clip_grad_norm_(params, max_norm=1.0)
-            optimiser.step()
+            scaler.step(optimiser)
+            scaler.update()
 
             epoch_loss += loss.item()
 
@@ -241,8 +263,11 @@ def train(cfg: Config, resume_from: str | None = None):
             writer.add_scalar("loss/epoch", avg_epoch_loss, epoch)
             writer.add_scalar("lr", optimiser.param_groups[0]["lr"], epoch)
 
+        # Always save latest checkpoint (overwrite) + periodic named checkpoints
+        save_checkpoint(epoch, backbone, head, optimiser, scheduler, avg_epoch_loss, cfg)
         if epoch % cfg.save_every == 0 or epoch == cfg.epochs:
-            save_checkpoint(epoch, backbone, head, optimiser, scheduler, avg_epoch_loss, cfg)
+            log.info(f"  (periodic checkpoint at epoch {epoch})")
+
 
     if writer:
         writer.close()
@@ -277,6 +302,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint_dir",  default=str(cfg_defaults.checkpoint_dir))
     parser.add_argument("--log_dir",         default=str(cfg_defaults.log_dir))
     parser.add_argument("--save_every",      type=int,   default=cfg_defaults.save_every)
+    parser.add_argument("--no_cache",        action="store_true",
+                        help="Disable HDF5 patch cache.")
     parser.add_argument("--resume_from",     default=None,
                         help="Path to a checkpoint file to resume training from.")
     return parser.parse_args()
@@ -304,6 +331,7 @@ if __name__ == "__main__":
         checkpoint_dir=args.checkpoint_dir,
         log_dir=args.log_dir,
         save_every=args.save_every,
+        use_cache=not args.no_cache,
     )
 
     train(cfg, resume_from=args.resume_from)

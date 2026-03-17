@@ -4,8 +4,8 @@ data/augmentations.py — Hyperspectral two-view augmentation pipeline for Pix2R
 Given a single patch tensor x ∈ (C, H, W):
   1. Independently apply *intensity* augmentations to obtain v and v'.
   2. Apply a random *spatial* affine transform φ to v' only (asymmetric).
-  3. Return (v, v', theta_inv) where theta_inv is the inverse affine grid
-     needed to match corresponding pixels between v and v'.
+  3. Return (v, v', theta_vprime_to_v) where theta_vprime_to_v maps coordinates
+     in v' to coordinates in v (PyTorch affine_grid convention).
 
 All operations are differentiable / GPU-friendly where relevant.
 """
@@ -22,8 +22,13 @@ import torch.nn.functional as F
 
 def band_dropout(x: torch.Tensor, p: float) -> torch.Tensor:
     """Zero out a random fraction p of spectral bands."""
+    if p <= 0:
+        return x
     C = x.shape[0]
-    n_drop = max(1, int(C * p))
+    n_drop = int(C * p)
+    if n_drop <= 0:
+        return x
+    n_drop = min(n_drop, C)
     drop_idx = torch.randperm(C)[:n_drop]
     x = x.clone()
     x[drop_idx] = 0.0
@@ -48,6 +53,44 @@ def spectral_reversal(x: torch.Tensor) -> torch.Tensor:
 def additive_gaussian_noise(x: torch.Tensor, std: float) -> torch.Tensor:
     noise = torch.randn_like(x) * std
     return torch.clamp(x + noise, 0.0, 1.0)
+
+
+def salt_and_pepper_noise(x: torch.Tensor, p: float) -> torch.Tensor:
+    """Add salt and pepper noise per pixel across all bands."""
+    if p <= 0: return x
+    noise = torch.rand(x.shape[1:], device=x.device)  # (H, W)
+    salt_mask = noise < (p / 2)
+    pepper_mask = (noise >= (p / 2)) & (noise < p)
+    x = x.clone()
+    x[:, salt_mask] = 1.0
+    x[:, pepper_mask] = 0.0
+    return x
+
+
+def spectral_scaling(x: torch.Tensor, scale_range: float) -> torch.Tensor:
+    """Global spectral scaling to simulate overall illumination changes."""
+    if scale_range <= 0: return x
+    scale = 1.0 + random.uniform(-scale_range, scale_range)
+    return torch.clamp(x * scale, 0.0, 1.0)
+
+
+def random_erasing(x: torch.Tensor, p: float, scale_range: Tuple[float, float]) -> torch.Tensor:
+    """Spatial random erasing (patching with black masks)."""
+    if random.random() > p: return x
+    C, H, W = x.shape
+    area = H * W
+    target_area = random.uniform(*scale_range) * area
+    aspect_ratio = random.uniform(0.3, 3.3)
+    
+    h = int(round(math.sqrt(target_area * aspect_ratio)))
+    w = int(round(math.sqrt(target_area / aspect_ratio)))
+    
+    if w < W and h < H:
+        top = random.randint(0, H - h)
+        left = random.randint(0, W - w)
+        x = x.clone()
+        x[:, top:top+h, left:left+w] = 0.0
+    return x
 
 
 # ────────────────────────────── spatial transform ─────────────────────────────
@@ -86,14 +129,13 @@ def random_affine_theta(
         flip_mat = torch.tensor([[-1.0, 0], [0, 1.0]])
         R = flip_mat @ R
 
-    # Zoom: scale factor > 1 means we see more of the image (zoom out)
-    # We implement zoom as a scale in the normalised [-1,1] coordinate space.
-    # zoom < 1 → zoom-in (crop); zoom > 1 → zoom-out (pad) — we use zoom-in only.
+    # In affine_grid convention, scale < 1 zooms in (crop) and scale > 1 zooms out.
+    # We use zoom-in only.
     zoom = random.uniform(*zoom_range)          # in [0.85, 1.0] → zoom-in crop
 
     # Full theta: [R | t] with t=0 (centred crop)
     theta = torch.zeros(2, 3)
-    theta[:2, :2] = R / zoom                   # scale by 1/zoom in grid coords
+    theta[:2, :2] = R * zoom                   # scale in grid coords
     # theta[:, 2] stays 0 (no translation)
 
     return theta.unsqueeze(0).to(device)        # (1, 2, 3)
@@ -140,9 +182,9 @@ class Pix2RepAugmentation:
 
     Usage::
         aug = Pix2RepAugmentation(cfg)
-        v, v_prime, theta_inv = aug(patch)   # patch: (C, H, W) float32 tensor
+        v, v_prime, theta_vprime_to_v = aug(patch)   # patch: (C, H, W) float32 tensor
 
-    theta_inv (1, 2, 3) can be used to map pixel coordinates in v' back to v.
+    theta_vprime_to_v (1, 2, 3) maps v' coordinates back to v coordinates.
     """
 
     def __init__(self, cfg):
@@ -150,6 +192,10 @@ class Pix2RepAugmentation:
         self.brightness = cfg.brightness_range
         self.contrast = cfg.contrast_range
         self.noise_std = cfg.noise_std
+        self.salt_pepper_p = getattr(cfg, 'salt_pepper_p', 0.0)
+        self.spectral_scale_range = getattr(cfg, 'spectral_scale_range', 0.0)
+        self.random_erasing_p = getattr(cfg, 'random_erasing_p', 0.0)
+        self.random_erasing_scale = getattr(cfg, 'random_erasing_scale', (0.02, 0.1))
 
     def _intensity_aug(self, x: torch.Tensor) -> torch.Tensor:
         """Apply all intensity augmentations in random order."""
@@ -158,6 +204,9 @@ class Pix2RepAugmentation:
             lambda t: band_dropout(t, self.band_dropout_p),
             lambda t: spectral_reversal(t) if random.random() < 0.5 else t,
             lambda t: additive_gaussian_noise(t, self.noise_std),
+            lambda t: salt_and_pepper_noise(t, self.salt_pepper_p),
+            lambda t: spectral_scaling(t, self.spectral_scale_range),
+            lambda t: random_erasing(t, self.random_erasing_p, self.random_erasing_scale),
         ]
         random.shuffle(ops)
         for op in ops:
@@ -175,18 +224,17 @@ class Pix2RepAugmentation:
         Returns:
             v:         (C, H, W) intensity-augmented view
             v_prime:   (C, H, W) intensity- AND spatially-augmented view
-            theta_inv: (1, 2, 3) inverse spatial transform (maps v'→v coordinates)
+            theta_vprime_to_v: (1, 2, 3) spatial transform (maps v'→v coordinates)
         """
         device = x.device
-        C, H, W = x.shape
+        _, H, W = x.shape
 
         # Independent intensity augmentations
         v = self._intensity_aug(x.clone())
         v_prime_intensity = self._intensity_aug(x.clone())
 
         # Spatial transform applied to v' only
-        theta = random_affine_theta(H, W, device=device)
-        v_prime = apply_spatial_transform(v_prime_intensity, theta)
-        theta_inv = invert_theta(theta)
+        theta_vprime_to_v = random_affine_theta(H, W, device=device)
+        v_prime = apply_spatial_transform(v_prime_intensity, theta_vprime_to_v)
 
-        return v, v_prime, theta_inv
+        return v, v_prime, theta_vprime_to_v

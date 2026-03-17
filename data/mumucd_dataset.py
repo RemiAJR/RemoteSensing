@@ -1,19 +1,19 @@
 """
-data/mumucd_dataset.py — PRISMA GeoTIFF loader, non-overlapping patch extraction, and
+data/mumucd_dataset.py — PRISMA scene loader, non-overlapping patch extraction, and
 optional HDF5 caching for the MUMUCD dataset.
 
 Expected layout after extraction:
     data/mumucd/
-        <scene_id>_prisma.tif   (one per scene, shape C×H×W in float32 or uint16)
+        <scene_id>/*prs*.nc     (MUMUCD NetCDF)
+        OR
+        <scene_id>/*prisma*.tif (GeoTIFF)
         ...
 
-The dataset returns (patch, path, row, col) tuples where *patch* is a
-float32 tensor of shape (C, patch_size, patch_size) normalised to [0, 1].
+The dataset returns patch tensors of shape (C, patch_size, patch_size) in [0, 1].
 """
 
-import os
 import json
-import hashlib
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -45,19 +45,78 @@ def _normalise(arr: np.ndarray) -> np.ndarray:
     return (arr - mn) / denom
 
 
+def _to_chw(arr: np.ndarray) -> np.ndarray:
+    """
+    Convert a 3D array to (C, H, W), inferring channel axis as the smallest axis.
+    """
+    if arr.ndim != 3:
+        raise ValueError(f"Expected 3D array, got shape {arr.shape}")
+    channel_axis = int(np.argmin(arr.shape))
+    if channel_axis == 0:
+        return arr
+    if channel_axis == 1:
+        return np.transpose(arr, (1, 0, 2))
+    return np.transpose(arr, (2, 0, 1))
+
+
+def _shape_to_chw(shape: Tuple[int, int, int]) -> Tuple[int, int, int]:
+    """Convert a 3D shape tuple to (C, H, W) using smallest-axis-as-channel."""
+    channel_axis = int(np.argmin(shape))
+    if channel_axis == 0:
+        return shape[0], shape[1], shape[2]
+    if channel_axis == 1:
+        return shape[1], shape[0], shape[2]
+    return shape[2], shape[0], shape[1]
+
+
+def _scene_shape(path: Path) -> Tuple[int, int, int]:
+    """
+    Return scene shape as (C, H, W) without loading full scene values.
+    """
+    suffix = path.suffix.lower()
+    if suffix in {".nc", ".h5", ".hdf5"}:
+        if not HAS_H5PY:
+            raise ImportError("h5py is required to read NetCDF/HDF5 PRISMA scenes.")
+        with h5py.File(path, "r") as f:
+            if "sr" not in f:
+                raise KeyError(f"Missing 'sr' dataset in {path}")
+            shape = tuple(f["sr"].shape)
+        if len(shape) != 3:
+            raise ValueError(f"'sr' dataset in {path} must be 3D, got {shape}")
+        return _shape_to_chw(shape)
+
+    if suffix in {".tif", ".tiff"}:
+        if not HAS_RASTERIO:
+            raise ImportError("rasterio is required to read GeoTIFF PRISMA scenes.")
+        with rasterio.open(path) as src:
+            return src.count, src.height, src.width
+
+    raise ValueError(f"Unsupported scene format for {path}. Expected .nc/.h5/.tif")
+
+
+@lru_cache(maxsize=8)
 def _load_scene(path: Path) -> np.ndarray:
     """
-    Load a PRISMA GeoTIFF and return a float32 array (C, H, W) in [0, 1].
-    Falls back to a random array when rasterio is unavailable (unit tests / CI).
+    Load a PRISMA scene and return a float32 array (C, H, W) in [0, 1].
+    Uses LRU cache to avoid redundant disk I/O when extracting multiple patches.
     """
-    if not HAS_RASTERIO:
-        # Minimal stub for offline / CI environments
-        rng = np.random.default_rng(abs(hash(str(path))) % (2**31))
-        return rng.random((239, 1536, 1536), dtype=np.float32)
+    suffix = path.suffix.lower()
+    if suffix in {".nc", ".h5", ".hdf5"}:
+        if not HAS_H5PY:
+            raise ImportError("h5py is required to read NetCDF/HDF5 PRISMA scenes.")
+        with h5py.File(path, "r") as f:
+            if "sr" not in f:
+                raise KeyError(f"Missing 'sr' dataset in {path}")
+            arr = f["sr"][()]
+    elif suffix in {".tif", ".tiff"}:
+        if not HAS_RASTERIO:
+            raise ImportError("rasterio is required to read GeoTIFF PRISMA scenes.")
+        with rasterio.open(path) as src:
+            arr = src.read()
+    else:
+        raise ValueError(f"Unsupported scene format for {path}. Expected .nc/.h5/.tif")
 
-    with rasterio.open(path) as src:
-        arr = src.read()           # (C, H, W), possibly uint16
-    return _normalise(arr)
+    return _normalise(_to_chw(arr))
 
 
 def _patch_indices(h: int, w: int, patch_size: int, stride: int) -> List[Tuple[int, int]]:
@@ -74,7 +133,7 @@ class MUMUCDPatchDataset(Dataset):
     Iterates over 128×128 non-overlapping patches extracted from MUMUCD PRISMA scenes.
 
     Args:
-        data_root: directory containing `*prisma*.tif` files.
+        data_root: directory containing scenes.
         patch_size: spatial size of each patch (default 128).
         stride: stride for patch extraction (default == patch_size → non-overlapping).
         cache_path: if set, patches are cached to an HDF5 file on first call.
@@ -97,19 +156,18 @@ class MUMUCDPatchDataset(Dataset):
         self.cache_path = Path(cache_path) if cache_path else None
         self.transform = transform
 
-        # Discover scene files
-        self.scene_paths: List[Path] = sorted(
-            list(self.data_root.glob("*prisma*.tif"))
-            + list(self.data_root.glob("*PRISMA*.tif"))
-        )
+        # Discover PRISMA scenes (NetCDF and GeoTIFF support).
+        scene_candidates = set()
+        for pattern in ("*prs*.nc", "*prs*.tif", "*prs*.tiff", "*prisma*.tif", "*prisma*.tiff"):
+            scene_candidates.update(self.data_root.rglob(pattern))
+        self.scene_paths = sorted(scene_candidates)
         if max_scenes is not None:
             self.scene_paths = self.scene_paths[:max_scenes]
 
         if not self.scene_paths:
             raise FileNotFoundError(
-                f"No PRISMA GeoTIFF files found under {self.data_root}. "
-                "Expected filenames matching '*prisma*.tif'. "
-                "Download with: zenodo_get 10674011 --record-filter '*prisma*'"
+                f"No PRISMA scenes found under {self.data_root}. "
+                "Expected files matching '*prs*.nc' or '*prisma*.tif'."
             )
 
         # Build the index: list of (scene_idx, row, col)
@@ -134,9 +192,11 @@ class MUMUCDPatchDataset(Dataset):
             try:
                 with open(meta_cache) as f:
                     saved = json.load(f)
+                current_scene_paths = [str(p.relative_to(self.data_root)) for p in self.scene_paths]
                 if saved.get("patch_size") == self.patch_size and \
                    saved.get("stride") == self.stride and \
-                   saved.get("n_scenes") == len(self.scene_paths):
+                   saved.get("n_scenes") == len(self.scene_paths) and \
+                   saved.get("scene_paths") == current_scene_paths:
                     self._index = [tuple(x) for x in saved["index"]]
                     self._scene_shapes = [tuple(x) for x in saved["shapes"]]
                     return
@@ -145,8 +205,12 @@ class MUMUCDPatchDataset(Dataset):
 
         print(f"[MUMUCDPatchDataset] Building patch index for {len(self.scene_paths)} scenes …")
         for s_idx, path in enumerate(self.scene_paths):
-            scene = _load_scene(path)              # (C, H, W)
-            c, h, w = scene.shape
+            c, h, w = _scene_shape(path)
+            if self._scene_shapes and c != self._scene_shapes[0][0]:
+                raise ValueError(
+                    f"Inconsistent channel count across scenes: {path} has {c}, "
+                    f"expected {self._scene_shapes[0][0]}"
+                )
             self._scene_shapes.append((c, h, w))
             for r, col in _patch_indices(h, w, self.patch_size, self.stride):
                 self._index.append((s_idx, r, col))
@@ -158,6 +222,7 @@ class MUMUCDPatchDataset(Dataset):
                     "patch_size": self.patch_size,
                     "stride": self.stride,
                     "n_scenes": len(self.scene_paths),
+                    "scene_paths": [str(p.relative_to(self.data_root)) for p in self.scene_paths],
                     "index": self._index,
                     "shapes": self._scene_shapes,
                 }, f)
@@ -170,18 +235,17 @@ class MUMUCDPatchDataset(Dataset):
 
     def _init_cache(self):
         if not HAS_H5PY:
-            print("[MUMUCDPatchDataset] h5py not installed — running without cache.")
-            return
+            raise ImportError("h5py is required when cache_path is set.")
 
         n = len(self._index)
         # Infer C from first scene shape; fall back to config default
-        c = self._scene_shapes[0][0] if self._scene_shapes else 239
+        c = self._scene_shapes[0][0] if self._scene_shapes else 230
         shape = (n, c, self.patch_size, self.patch_size)
 
         if self.cache_path.exists():
             # Validate existing cache
             with h5py.File(self.cache_path, "r") as f:
-                if f["patches"].shape == shape:
+                if "patches" in f and f["patches"].shape == shape:
                     print(f"[MUMUCDPatchDataset] Using existing cache: {self.cache_path}")
                     self._cache_ds = "valid"
                     return
@@ -189,18 +253,20 @@ class MUMUCDPatchDataset(Dataset):
             self.cache_path.unlink()
 
         print(f"[MUMUCDPatchDataset] Building HDF5 cache → {self.cache_path} …")
-        scenes: dict = {}
         with h5py.File(self.cache_path, "w") as f:
             ds = f.create_dataset(
                 "patches", shape=shape, dtype="float32",
                 chunks=(1, c, self.patch_size, self.patch_size),
                 compression="lzf",
             )
+            current_scene_idx = None
+            current_scene = None
             for i, (s_idx, r, col) in enumerate(self._index):
-                if s_idx not in scenes:
-                    scenes[s_idx] = _load_scene(self.scene_paths[s_idx])
+                if s_idx != current_scene_idx:
+                    current_scene = _load_scene(self.scene_paths[s_idx])
+                    current_scene_idx = s_idx
                 p = self.patch_size
-                ds[i] = scenes[s_idx][:, r:r + p, col:col + p]
+                ds[i] = current_scene[:, r:r + p, col:col + p]
                 if (i + 1) % 500 == 0:
                     print(f"  cached {i + 1}/{n} patches")
         self._cache_ds = "valid"
