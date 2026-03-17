@@ -27,7 +27,7 @@ class Config:
     lambda_barlow: float = 5e-3                    # off-diagonal regularisation weight
 
     # ── Optimisation ──────────────────────────────────────────────────────────
-    batch_size: int = 64
+    batch_size: int = 512
     epochs: int = 30
     lr: float = 5e-4
     weight_decay: float = 1e-4
@@ -48,10 +48,10 @@ class Config:
     log_dir: Path = Path("runs/pretrain")
     checkpoint_dir: Path = Path("checkpoints")
     save_every: int = 1                            # save checkpoint every N epochs
-    log_every: int = 10                            # log loss every N batches
+    log_every: int = 1                            # log loss every N batches
 
     # ── Hardware ──────────────────────────────────────────────────────────────
-    num_workers: int = 8
+    num_workers: int = 4
     pin_memory: bool = True
     seed: int = 42
 
