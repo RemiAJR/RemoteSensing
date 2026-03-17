@@ -94,7 +94,7 @@ def _scene_shape(path: Path) -> Tuple[int, int, int]:
     raise ValueError(f"Unsupported scene format for {path}. Expected .nc/.h5/.tif")
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def _load_scene(path: Path) -> np.ndarray:
     """
     Load a PRISMA scene and return a float32 array (C, H, W) in [0, 1].
