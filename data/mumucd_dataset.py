@@ -94,7 +94,7 @@ def _scene_shape(path: Path) -> Tuple[int, int, int]:
     raise ValueError(f"Unsupported scene format for {path}. Expected .nc/.h5/.tif")
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=5)
 def _load_scene(path: Path) -> np.ndarray:
     """
     Load a PRISMA scene and return a float32 array (C, H, W) in [0, 1].
@@ -237,6 +237,8 @@ class MUMUCDPatchDataset(Dataset):
         if not HAS_H5PY:
             raise ImportError("h5py is required when cache_path is set.")
 
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+
         n = len(self._index)
         # Infer C from first scene shape; fall back to config default
         c = self._scene_shapes[0][0] if self._scene_shapes else 230
@@ -244,31 +246,57 @@ class MUMUCDPatchDataset(Dataset):
 
         if self.cache_path.exists():
             # Validate existing cache
-            with h5py.File(self.cache_path, "r") as f:
-                if "patches" in f and f["patches"].shape == shape:
-                    print(f"[MUMUCDPatchDataset] Using existing cache: {self.cache_path}")
-                    self._cache_ds = "valid"
-                    return
-            print("[MUMUCDPatchDataset] Cache shape mismatch — rebuilding.")
-            self.cache_path.unlink()
+            try:
+                with h5py.File(self.cache_path, "r") as f:
+                    if "patches" in f and f["patches"].shape == shape:
+                        print(f"[MUMUCDPatchDataset] Using existing cache: {self.cache_path}")
+                        self._cache_ds = "valid"
+                        return
+                    if "patches" not in f:
+                        print("[MUMUCDPatchDataset] Cache missing 'patches' dataset — rebuilding.")
+                    else:
+                        print("[MUMUCDPatchDataset] Cache shape mismatch — rebuilding.")
+            except (OSError, ValueError) as exc:
+                print(f"[MUMUCDPatchDataset] Cache unreadable ({exc}) — rebuilding.")
+
+            try:
+                self.cache_path.unlink()
+            except OSError as exc:
+                raise OSError(
+                    f"Failed to remove invalid cache file {self.cache_path}: {exc}"
+                ) from exc
 
         print(f"[MUMUCDPatchDataset] Building HDF5 cache → {self.cache_path} …")
-        with h5py.File(self.cache_path, "w") as f:
-            ds = f.create_dataset(
-                "patches", shape=shape, dtype="float32",
-                chunks=(1, c, self.patch_size, self.patch_size),
-                compression="lzf",
-            )
-            current_scene_idx = None
-            current_scene = None
-            for i, (s_idx, r, col) in enumerate(self._index):
-                if s_idx != current_scene_idx:
-                    current_scene = _load_scene(self.scene_paths[s_idx])
-                    current_scene_idx = s_idx
-                p = self.patch_size
-                ds[i] = current_scene[:, r:r + p, col:col + p]
-                if (i + 1) % 500 == 0:
-                    print(f"  cached {i + 1}/{n} patches")
+        try:
+            with h5py.File(self.cache_path, "w") as f:
+                ds = f.create_dataset(
+                    "patches", shape=shape, dtype="float32",
+                    chunks=(1, c, self.patch_size, self.patch_size),
+                    compression="lzf",
+                )
+                current_scene_idx = None
+                current_scene = None
+                for i, (s_idx, r, col) in enumerate(self._index):
+                    if s_idx != current_scene_idx:
+                        current_scene = _load_scene(self.scene_paths[s_idx])
+                        current_scene_idx = s_idx
+                    p = self.patch_size
+                    ds[i] = current_scene[:, r:r + p, col:col + p]
+                    if (i + 1) % 500 == 0:
+                        print(f"  cached {i + 1}/{n} patches")
+        except (OSError, RuntimeError) as exc:
+            try:
+                if self.cache_path.exists():
+                    self.cache_path.unlink()
+            except OSError as cleanup_exc:
+                raise OSError(
+                    f"Failed while building cache {self.cache_path}: {exc}. "
+                    f"Also failed to remove partial cache file: {cleanup_exc}"
+                ) from cleanup_exc
+            raise OSError(
+                f"Failed while building cache {self.cache_path}: {exc}. "
+                "Free disk space or disable cache."
+            ) from exc
         self._cache_ds = "valid"
         print("[MUMUCDPatchDataset] Cache built.")
 
