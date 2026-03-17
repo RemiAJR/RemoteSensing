@@ -5,12 +5,14 @@ No GPU and no real data files required.
 Run with: python -m pytest tests/ -v
 """
 
+import argparse
 import sys
 from pathlib import Path
 
 # Make project root importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import numpy as np
 import pytest
 import torch
 import torch.nn.functional as F
@@ -26,6 +28,13 @@ from data.augmentations import (
 from models.unet import HyperspectralUNet
 from models.projection_head import DenseProjectionHead
 from losses.barlow_twins_pixel import PixelBarlowTwinsLoss
+from data.mumucd_dataset import MUMUCDPatchDataset, HAS_H5PY
+from pretrain import (
+    _apply_vm_safe_profile,
+    _resolve_persistent_workers,
+    _resolve_resume_path,
+    _resolve_use_cache,
+)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -178,6 +187,173 @@ def test_loss_raises_on_empty_valid_mask(cfg):
 def test_config_rejects_too_few_samples_for_proj_dim():
     with pytest.raises(ValueError, match="batch_size \\* n_pixels_M"):
         Config(batch_size=1, n_pixels_M=8, proj_dim=16)
+
+
+def test_config_rejects_invalid_prefetch_factor():
+    with pytest.raises(ValueError, match="prefetch_factor"):
+        Config(prefetch_factor=0)
+
+
+def test_config_rejects_invalid_log_every():
+    with pytest.raises(ValueError, match="log_every"):
+        Config(log_every=0)
+
+
+def test_config_rejects_negative_max_batches_per_epoch():
+    with pytest.raises(ValueError, match="max_batches_per_epoch"):
+        Config(max_batches_per_epoch=-1)
+
+
+def test_config_rejects_persistent_workers_without_workers():
+    with pytest.raises(ValueError, match="persistent_workers"):
+        Config(num_workers=0, persistent_workers=True)
+
+
+def test_resolve_use_cache_respects_defaults_and_flags():
+    defaults_off = Config(use_cache=False)
+    defaults_on = Config(use_cache=True)
+
+    args_default = argparse.Namespace(use_cache=False, no_cache=False)
+    assert _resolve_use_cache(args_default, defaults_off) is False
+    assert _resolve_use_cache(args_default, defaults_on) is True
+
+    args_enable = argparse.Namespace(use_cache=True, no_cache=False)
+    assert _resolve_use_cache(args_enable, defaults_off) is True
+
+    args_disable = argparse.Namespace(use_cache=True, no_cache=True)
+    assert _resolve_use_cache(args_disable, defaults_on) is False
+
+
+def test_resolve_persistent_workers_respects_defaults_and_flags():
+    defaults_off = Config(persistent_workers=False)
+    defaults_on = Config(persistent_workers=True, num_workers=1)
+
+    args_default = argparse.Namespace(
+        persistent_workers=False,
+        no_persistent_workers=False,
+    )
+    assert _resolve_persistent_workers(args_default, defaults_off) is False
+    assert _resolve_persistent_workers(args_default, defaults_on) is True
+
+    args_enable = argparse.Namespace(
+        persistent_workers=True,
+        no_persistent_workers=False,
+    )
+    assert _resolve_persistent_workers(args_enable, defaults_off) is True
+
+    args_disable = argparse.Namespace(
+        persistent_workers=True,
+        no_persistent_workers=True,
+    )
+    assert _resolve_persistent_workers(args_disable, defaults_on) is False
+
+
+def test_apply_vm_safe_profile_caps_resource_intensive_args():
+    args = argparse.Namespace(
+        vm_safe=True,
+        no_cache=False,
+        use_cache=True,
+        batch_size=128,
+        num_workers=8,
+        prefetch_factor=8,
+        log_every=1,
+        persistent_workers=True,
+        no_persistent_workers=False,
+        save_latest_every_batches=0,
+    )
+    _apply_vm_safe_profile(args)
+    assert args.no_cache is True
+    assert args.use_cache is False
+    assert args.batch_size == 16
+    assert args.num_workers == 2
+    assert args.prefetch_factor == 2
+    assert args.log_every == 10
+    assert args.persistent_workers is False
+    assert args.no_persistent_workers is True
+    assert args.save_latest_every_batches == 250
+
+
+def test_resolve_resume_path_prefers_explicit_checkpoint(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    explicit = checkpoint_dir / "manual.pt"
+    explicit.write_bytes(b"manual")
+
+    resolved = _resolve_resume_path(
+        resume_from=str(explicit),
+        resume_latest=True,
+        checkpoint_dir=checkpoint_dir,
+    )
+    assert resolved == str(explicit)
+
+
+def test_resolve_resume_path_prefers_latest_checkpoint_file(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "pretrain_epoch0001.pt").write_bytes(b"e1")
+    (checkpoint_dir / "pretrain_latest.pt").write_bytes(b"latest")
+
+    resolved = _resolve_resume_path(
+        resume_from=None,
+        resume_latest=True,
+        checkpoint_dir=checkpoint_dir,
+    )
+    assert resolved == str(checkpoint_dir / "pretrain_latest.pt")
+
+
+def test_resolve_resume_path_falls_back_to_highest_epoch(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "pretrain_epoch0002.pt").write_bytes(b"e2")
+    (checkpoint_dir / "pretrain_epoch0010.pt").write_bytes(b"e10")
+
+    resolved = _resolve_resume_path(
+        resume_from=None,
+        resume_latest=True,
+        checkpoint_dir=checkpoint_dir,
+    )
+    assert resolved == str(checkpoint_dir / "pretrain_epoch0010.pt")
+
+
+def test_resolve_resume_path_raises_when_no_checkpoint_exists(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+
+    with pytest.raises(FileNotFoundError, match="--resume_latest requested"):
+        _resolve_resume_path(
+            resume_from=None,
+            resume_latest=True,
+            checkpoint_dir=checkpoint_dir,
+        )
+
+
+@pytest.mark.skipif(not HAS_H5PY, reason="h5py is required for cache tests")
+def test_dataset_recovers_from_corrupted_cache(tmp_path):
+    scene_dir = tmp_path / "scene_a"
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    scene_path = scene_dir / "dummy_prs.nc"
+
+    import h5py
+
+    sr = np.random.rand(4, 8, 8).astype(np.float32)
+    with h5py.File(scene_path, "w") as f:
+        f.create_dataset("sr", data=sr)
+
+    cache_path = tmp_path / "cache" / "mumucd_patches.h5"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(b"corrupted-cache")
+
+    ds = MUMUCDPatchDataset(
+        data_root=tmp_path,
+        patch_size=4,
+        stride=4,
+        cache_path=cache_path,
+        max_scenes=1,
+    )
+
+    assert ds._cache_ds == "valid"
+    sample = ds[0]
+    assert sample.shape == (4, 4, 4)
 
 
 # ── End-to-end overfit test ───────────────────────────────────────────────────

@@ -27,7 +27,7 @@ class Config:
     lambda_barlow: float = 5e-3                    # off-diagonal regularisation weight
 
     # ── Optimisation ──────────────────────────────────────────────────────────
-    batch_size: int = 512
+    batch_size: int = 8
     epochs: int = 30
     lr: float = 5e-4
     weight_decay: float = 1e-4
@@ -48,10 +48,15 @@ class Config:
     log_dir: Path = Path("runs/pretrain")
     checkpoint_dir: Path = Path("checkpoints")
     save_every: int = 1                            # save checkpoint every N epochs
-    log_every: int = 1                            # log loss every N batches
+    log_every: int = 20                           # log loss every N batches
+    max_batches_per_epoch: int = 0                # 0 = full epoch, >0 caps training batches
+    save_latest_every_batches: int = 250          # overwrite latest checkpoint every N batches
+    latest_checkpoint_name: str = "pretrain_latest.pt"
 
     # ── Hardware ──────────────────────────────────────────────────────────────
-    num_workers: int = 4
+    num_workers: int = 2
+    prefetch_factor: int = 2
+    persistent_workers: bool = False
     pin_memory: bool = True
     seed: int = 42
 
@@ -67,10 +72,28 @@ class Config:
             raise ValueError(f"patch_stride must be > 0, got {self.patch_stride}")
         if self.batch_size <= 0:
             raise ValueError(f"batch_size must be > 0, got {self.batch_size}")
+        if self.log_every <= 0:
+            raise ValueError(f"log_every must be > 0, got {self.log_every}")
+        if self.num_workers < 0:
+            raise ValueError(f"num_workers must be >= 0, got {self.num_workers}")
+        if self.prefetch_factor <= 0:
+            raise ValueError(f"prefetch_factor must be > 0, got {self.prefetch_factor}")
+        if self.persistent_workers and self.num_workers == 0:
+            raise ValueError("persistent_workers=True requires num_workers > 0")
+        if self.max_batches_per_epoch < 0:
+            raise ValueError(
+                f"max_batches_per_epoch must be >= 0, got {self.max_batches_per_epoch}"
+            )
         if self.n_pixels_M <= 0:
             raise ValueError(f"n_pixels_M must be > 0, got {self.n_pixels_M}")
         if self.proj_dim <= 0:
             raise ValueError(f"proj_dim must be > 0, got {self.proj_dim}")
+        if self.save_latest_every_batches < 0:
+            raise ValueError(
+                f"save_latest_every_batches must be >= 0, got {self.save_latest_every_batches}"
+            )
+        if not self.latest_checkpoint_name:
+            raise ValueError("latest_checkpoint_name must be a non-empty string")
 
         # Keep correlation estimation in a sane regime.
         n_samples = self.batch_size * self.n_pixels_M

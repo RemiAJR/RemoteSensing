@@ -44,6 +44,33 @@ pip install -r requirements.txt
 
 Now, you should be good to go!
 
+## RemoteSensing pretraining (MUMUCD)
+
+For the hyperspectral pretraining pipeline in this repository (`pretrain.py`), use the VM-safe profile by default on constrained machines:
+
+```bash
+cd RemoteSensing
+python pretrain.py --vm_safe --resume_latest
+```
+
+Notes:
+
+- `--vm_safe` forces a low-memory launch profile (`--no_cache`, bounded batch/workers/prefetch).
+- `--resume_latest` resumes from `checkpoints/pretrain_latest.pt` when present, otherwise from the highest `pretrain_epoch*.pt`.
+- You can always force a specific checkpoint with:
+
+```bash
+python pretrain.py --vm_safe --resume_from checkpoints/pretrain_epoch0002.pt
+```
+
+If your VM budget is tight, cap the number of optimization steps per epoch:
+
+```bash
+python pretrain.py --resume_from checkpoints/pretrain_epoch0002.pt \
+  --epochs 5 --max_batches_per_epoch 150 --log_every 10 \
+  --save_latest_every_batches 25 --no_cache --batch_size 8 --num_workers 1
+```
+
 ## Pretraining Pix2Rep-v2 for cardiac applications
 
 To pretrain Pix2Rep-v2 on the cardiac datasets (ACDC, MnMs, MnMs2), run:
