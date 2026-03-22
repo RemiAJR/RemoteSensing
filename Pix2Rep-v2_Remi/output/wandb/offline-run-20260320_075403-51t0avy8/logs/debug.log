@@ -1,0 +1,22 @@
+2026-03-20 07:54:03,088 INFO    MainThread:1352031 [wandb_setup.py:_flush():81] Current SDK version is 0.25.1
+2026-03-20 07:54:03,088 INFO    MainThread:1352031 [wandb_setup.py:_flush():81] Configure stats pid to 1352031
+2026-03-20 07:54:03,088 INFO    MainThread:1352031 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-03-20 07:54:03,088 INFO    MainThread:1352031 [wandb_init.py:setup_run_log_directory():717] Logging user logs to output/wandb/offline-run-20260320_075403-51t0avy8/logs/debug.log
+2026-03-20 07:54:03,088 INFO    MainThread:1352031 [wandb_init.py:setup_run_log_directory():718] Logging internal logs to output/wandb/offline-run-20260320_075403-51t0avy8/logs/debug-internal.log
+2026-03-20 07:54:03,088 INFO    MainThread:1352031 [wandb_init.py:init():844] calling init triggers
+2026-03-20 07:54:03,088 INFO    MainThread:1352031 [wandb_init.py:init():849] wandb.init called with sweep_config: {}
+config: {'_wandb': {}}
+2026-03-20 07:54:03,088 INFO    MainThread:1352031 [wandb_init.py:init():892] starting backend
+2026-03-20 07:54:04,415 INFO    MainThread:1352031 [wandb_init.py:init():895] sending inform_init request
+2026-03-20 07:54:04,419 INFO    MainThread:1352031 [wandb_init.py:init():903] backend started and connected
+2026-03-20 07:54:04,422 INFO    MainThread:1352031 [wandb_init.py:init():973] updated telemetry
+2026-03-20 07:54:04,429 INFO    MainThread:1352031 [wandb_init.py:init():997] communicating run to backend with 90.0 second timeout
+2026-03-20 07:54:04,539 INFO    MainThread:1352031 [wandb_init.py:init():1042] starting run threads in backend
+2026-03-20 07:54:04,663 INFO    MainThread:1352031 [wandb_run.py:_console_start():2524] atexit reg
+2026-03-20 07:54:04,663 INFO    MainThread:1352031 [wandb_run.py:_redirect():2373] redirect: wrap_raw
+2026-03-20 07:54:04,663 INFO    MainThread:1352031 [wandb_run.py:_redirect():2442] Wrapping output streams.
+2026-03-20 07:54:04,663 INFO    MainThread:1352031 [wandb_run.py:_redirect():2465] Redirects installed.
+2026-03-20 07:54:04,665 INFO    MainThread:1352031 [wandb_init.py:init():1082] run started, returning control to user process
+2026-03-20 07:54:05,217 INFO    MainThread:1352031 [wandb_run.py:_config_callback():1403] config_cb None None {'data.val_ratio': 0.1, 'data.batch_size_pretraining': 16, 'data.batch_size_finetuning': 16, 'data.random_seed': 42, 'pretraining.backbone': "{'name': 'unet', 'params': {'in_channels': 230, 'out_channels_repr': 1024, 'norm': 'batch', 'bilinear': False}}", 'pretraining.num_epochs': 200, 'pretraining.n_channels': 1, 'pretraining.lr_backbone': 0.0005, 'pretraining.lambda_barlow': 0.005, 'pretraining.n_feature_maps_mlp': 256, 'pretraining.projection_head_depth': 1, 'pretraining.inner_dim_1': 256, 'pretraining.min_patch_size_factor': 0.33, 'pretraining.max_patch_size_factor': 0.75, 'pretraining.is_rotated': True, 'pretraining.is_cropped': True, 'pretraining.is_flipped': True, 'pretraining.is_translation': False, 'pretraining.max_angle': 1.57079632679, 'pretraining.max_crop': 0.33, 'pretraining.is_rotated_3d': True, 'pretraining.is_cropped_3d': True, 'pretraining.is_flipped_3d': False, 'pretraining.max_angle_3d': 0.7853981634, 'pretraining.max_crop_3d': 0.33, 'pretraining.n_points': 131072, 'pretraining.pretraining_transform': "{'elastic_transform_p': 0.5, 'elastic_transform_p_3d': 0.3, 'random_noise_std': 0.02, 'random_noise_p': 0.3, 'random_blur_std': 1.3, 'random_blur_p': 0.3, 'log_gamma': 0.3, 'random_gamma_p': 0.9, 'random_field_coef': 0.9, 'random_field_p': 0.75, 'random_invert_p': 0.35}"}
+2026-03-20 07:56:15,461 INFO    wandb-AsyncioManager-main:1352031 [service_client.py:_forward_responses():134] Reached EOF.
+2026-03-20 07:56:15,496 INFO    wandb-AsyncioManager-main:1352031 [mailbox.py:close():155] Closing mailbox, abandoning 0 handles.

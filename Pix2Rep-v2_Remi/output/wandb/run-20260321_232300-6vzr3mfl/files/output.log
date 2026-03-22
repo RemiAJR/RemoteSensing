@@ -1,0 +1,125 @@
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+Loading `train_dataloader` to estimate number of stepping batches.
+/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+┏━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━┓
+┃   ┃ Name            ┃ Type           ┃ Params ┃ Mode  ┃ FLOPs ┃
+┡━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+│ 0 │ backbone        │ UNet           │  135 M │ train │     0 │
+│ 1 │ projection_head │ ProjectionHead │  328 K │ train │     0 │
+└───┴─────────────────┴────────────────┴────────┴───────┴───────┘
+Trainable params: 135 M
+Non-trainable params: 0
+Total params: 135 M
+Total estimated model params size (MB): 541
+Modules in train mode: 120
+Modules in eval mode: 0
+Total FLOPs: 0
+[rank: 0] Received SIGTERM: 15
+Traceback (most recent call last):
+  File "/workspace/.miniconda3/lib/python3.13/threading.py", line 363, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+    _error_if_any_worker_fails()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: DataLoader worker (pid 395881) is killed by signal: Terminated.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/.miniconda3/lib/python3.13/queue.py", line 213, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/workspace/.miniconda3/lib/python3.13/threading.py", line 368, in wait
+    self._acquire_restore(saved_state)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/workspace/.miniconda3/lib/python3.13/threading.py", line 315, in _acquire_restore
+    def _acquire_restore(self, x):
+
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+    _error_if_any_worker_fails()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: DataLoader worker (pid 395888) is killed by signal: Terminated.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 1310, in _try_get_data
+    data = self._data_queue.get(timeout=timeout)
+  File "/workspace/.miniconda3/lib/python3.13/queue.py", line 194, in get
+    with self.not_empty:
+         ^^^^^^^^^^^^^^
+  File "/workspace/.miniconda3/lib/python3.13/threading.py", line 307, in __exit__
+    return self._lock.__exit__(*args)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+RuntimeError: release unlocked lock
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/workspace/RemoteSensing/Pix2Rep-v2_Remi/scripts/remote_sensing/pretrain_pix2repv2.py", line 161, in <module>
+    main()
+    ~~~~^^
+  File "/workspace/RemoteSensing/Pix2Rep-v2_Remi/scripts/remote_sensing/pretrain_pix2repv2.py", line 151, in main
+    run_training(
+    ~~~~~~~~~~~~^
+        cfg=cfg,
+        ^^^^^^^^
+    ...<3 lines>...
+        distributed=args.distributed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/RemoteSensing/Pix2Rep-v2_Remi/scripts/remote_sensing/pretrain_pix2repv2.py", line 87, in run_training
+    trainer.fit(model, train_loader_ssl, val_loader_ssl)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/trainer.py", line 584, in fit
+    call._call_and_handle_interrupt(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<6 lines>...
+        weights_only,
+        ^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/trainer.py", line 630, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/trainer.py", line 1079, in _run
+    results = self._run_stage()
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/trainer.py", line 1121, in _run_stage
+    self._run_sanity_check()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/trainer.py", line 1150, in _run_sanity_check
+    val_loop.run()
+    ~~~~~~~~~~~~^^
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/loops/utilities.py", line 179, in _decorator
+    return loop_run(self, *args, **kwargs)
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 139, in run
+    batch, batch_idx, dataloader_idx = next(data_fetcher)
+                                       ~~~~^^^^^^^^^^^^^^
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/loops/fetchers.py", line 134, in __next__
+    batch = super().__next__()
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/loops/fetchers.py", line 61, in __next__
+    batch = next(self.iterator)
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/utilities/combined_loader.py", line 341, in __next__
+    out = next(self._iterator)
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/utilities/combined_loader.py", line 142, in __next__
+    out = next(self.iterators[0])
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 741, in __next__
+    data = self._next_data()
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 1524, in _next_data
+    idx, data = self._get_data()
+                ~~~~~~~~~~~~~~^^
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 1473, in _get_data
+    success, data = self._try_get_data()
+                    ~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/.miniconda3/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 1323, in _try_get_data
+    raise RuntimeError(
+        f"DataLoader worker (pid(s) {pids_str}) exited unexpectedly"
+    ) from e
+RuntimeError: DataLoader worker (pid(s) 395888) exited unexpectedly

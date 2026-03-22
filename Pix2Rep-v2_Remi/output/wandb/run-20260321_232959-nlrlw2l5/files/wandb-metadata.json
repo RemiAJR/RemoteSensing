@@ -1,0 +1,44 @@
+{
+  "os": "Linux-5.15.0-170-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.13.5",
+  "startedAt": "2026-03-21T23:29:59.301434Z",
+  "args": [
+    "--pretraining_dataset",
+    "MUMUCD",
+    "--exp_name",
+    "pretrain_mumucd_run1"
+  ],
+  "program": "-m scripts.remote_sensing.pretrain_pix2repv2",
+  "git": {
+    "remote": "https://github.com/RemiAJR/RemoteSensing.git",
+    "commit": "6c4cc74a2affc37b4b72f3a90c53d46f48d6f2c6"
+  },
+  "email": "remiajroudi@gmail.com",
+  "root": "output",
+  "host": "job-148d4a31-df16-429b-b854-2bfa6ca2216e",
+  "executable": "/workspace/.miniconda3/bin/python3",
+  "cpu_count": 60,
+  "cpu_count_logical": 60,
+  "gpu": "Tesla V100S-PCIE-32GB",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "3779044696064",
+      "used": "268498104320"
+    }
+  },
+  "memory": {
+    "total": "185454264320"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "Tesla V100S-PCIE-32GB",
+      "memoryTotal": "34359738368",
+      "cudaCores": 5120,
+      "architecture": "Volta",
+      "uuid": "GPU-bf5ff5dc-eb2b-f34d-27de-5b8df06659fd"
+    }
+  ],
+  "cudaVersion": "13.0",
+  "writerId": "ioxw9cmzcb05slg5qzyrxzgej6s1keba"
+}

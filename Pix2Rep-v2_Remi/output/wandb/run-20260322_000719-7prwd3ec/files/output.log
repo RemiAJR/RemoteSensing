@@ -1,0 +1,20 @@
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+Loading `train_dataloader` to estimate number of stepping batches.
+/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/connectors/data_connector.py:434: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=59` in the `DataLoader` to improve performance.
+┏━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━┓
+┃   ┃ Name            ┃ Type           ┃ Params ┃ Mode  ┃ FLOPs ┃
+┡━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+│ 0 │ backbone        │ UNet           │  135 M │ train │     0 │
+│ 1 │ projection_head │ ProjectionHead │  328 K │ train │     0 │
+└───┴─────────────────┴────────────────┴────────┴───────┴───────┘
+Trainable params: 135 M
+Non-trainable params: 0
+Total params: 135 M
+Total estimated model params size (MB): 541
+Modules in train mode: 120
+Modules in eval mode: 0
+Total FLOPs: 0
+/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/connectors/data_connector.py:434: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=59` in the `DataLoader` to improve performance.
+[rank: 0] Received SIGTERM: 15
+Epoch 0/199 ╸                      13/394 0:03:24 • 1:51:34 0.06it/s v_num: d3ec

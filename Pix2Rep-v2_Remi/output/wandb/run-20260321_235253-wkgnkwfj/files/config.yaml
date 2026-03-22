@@ -1,0 +1,127 @@
+_wandb:
+    value:
+        cli_version: 0.25.1
+        e:
+            vg1ci18frej572zfpmv7sfpfisvizgb7:
+                args:
+                    - --pretraining_dataset
+                    - MUMUCD
+                    - --exp_name
+                    - pretrain_mumucd_debug
+                cpu_count: 60
+                cpu_count_logical: 60
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "3779044696064"
+                        used: "268498563072"
+                email: remiajroudi@gmail.com
+                executable: /workspace/.miniconda3/bin/python
+                git:
+                    commit: 6c4cc74a2affc37b4b72f3a90c53d46f48d6f2c6
+                    remote: https://github.com/RemiAJR/RemoteSensing.git
+                gpu: Tesla V100S-PCIE-32GB
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Volta
+                      cudaCores: 5120
+                      memoryTotal: "34359738368"
+                      name: Tesla V100S-PCIE-32GB
+                      uuid: GPU-bf5ff5dc-eb2b-f34d-27de-5b8df06659fd
+                host: job-148d4a31-df16-429b-b854-2bfa6ca2216e
+                memory:
+                    total: "185454264320"
+                os: Linux-5.15.0-170-generic-x86_64-with-glibc2.39
+                program: -m scripts.remote_sensing.pretrain_pix2repv2
+                python: CPython 3.13.5
+                root: output
+                startedAt: "2026-03-21T23:52:53.299065Z"
+                writerId: vg1ci18frej572zfpmv7sfpfisvizgb7
+        m:
+            - "1": trainer/global_step
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.13.5
+        t:
+            "1":
+                - 1
+                - 41
+                - 48
+                - 49
+                - 50
+                - 106
+            "2":
+                - 1
+                - 41
+                - 48
+                - 49
+                - 50
+                - 106
+            "3":
+                - 7
+                - 13
+                - 66
+            "4": 3.13.5
+            "5": 0.25.1
+            "12": 0.25.1
+            "13": linux-x86_64
+data.batch_size_finetuning:
+    value: 16
+data.batch_size_pretraining:
+    value: 16
+data.random_seed:
+    value: 42
+data.val_ratio:
+    value: 0.1
+pretraining.backbone:
+    value: '{''name'': ''unet'', ''params'': {''in_channels'': 230, ''out_channels_repr'': 1024, ''norm'': ''batch'', ''bilinear'': False}}'
+pretraining.inner_dim_1:
+    value: 256
+pretraining.is_cropped:
+    value: true
+pretraining.is_cropped_3d:
+    value: true
+pretraining.is_flipped:
+    value: true
+pretraining.is_flipped_3d:
+    value: false
+pretraining.is_rotated:
+    value: true
+pretraining.is_rotated_3d:
+    value: true
+pretraining.is_translation:
+    value: false
+pretraining.lambda_barlow:
+    value: 0.005
+pretraining.lr_backbone:
+    value: 0.0005
+pretraining.max_angle:
+    value: 1.57079632679
+pretraining.max_angle_3d:
+    value: 0.7853981634
+pretraining.max_crop:
+    value: 0.33
+pretraining.max_crop_3d:
+    value: 0.33
+pretraining.max_patch_size_factor:
+    value: 0.75
+pretraining.min_patch_size_factor:
+    value: 0.33
+pretraining.n_channels:
+    value: 230
+pretraining.n_feature_maps_mlp:
+    value: 256
+pretraining.n_points:
+    value: 131072
+pretraining.num_epochs:
+    value: 200
+pretraining.pretraining_transform:
+    value: '{''elastic_transform_p'': 0.5, ''elastic_transform_p_3d'': 0.3, ''random_noise_std'': 0.0, ''random_noise_p'': 0.0, ''random_blur_std'': 1.3, ''random_blur_p'': 0.3, ''log_gamma'': 0.3, ''random_gamma_p'': 0.9, ''random_field_coef'': 0.9, ''random_field_p'': 0.75, ''random_invert_p'': 0.35}'
+pretraining.projection_head_depth:
+    value: 1

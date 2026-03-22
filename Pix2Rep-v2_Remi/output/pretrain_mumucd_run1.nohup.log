@@ -1,0 +1,39 @@
+<frozen importlib._bootstrap_external>:1328: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.
+Seed set to 42
+2026-03-22 00:26:49.906 | INFO     | pix2repv2.data.mumucd_ssl:__init__:67 - MUMUCD PRISMA: found 70 cities, 100 patches each -> 7000 samples/epoch
+2026-03-22 00:26:49.907 | INFO     | __main__:main:138 - MUMUCD PRISMA dataloaders construction
+2026-03-22 00:26:49.907 | INFO     | pix2repv2.data.mumucd_ssl:build_patch_loader:189 - Using num_workers = 0
+2026-03-22 00:26:49.907 | INFO     | pix2repv2.data.mumucd_ssl:build_patch_loader:189 - Using num_workers = 0
+2026-03-22 00:26:49.910 | INFO     | __main__:run_training:63 - Distributed training: disabled
+2026-03-22 00:26:49.913 | INFO     | pix2repv2.models.registry:build_backbone:22 - Building backbone: unet
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+wandb: WARNING The anonymous setting has no effect and will be removed in a future version.
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /workspace/.netrc.
+wandb: Currently logged in as: remiajr (remiajr-cole-normale-sup-rieure-paris-saclay) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run sgdqti2s
+wandb: Tracking run with wandb version 0.25.1
+wandb: Run data is saved locally in output/wandb/run-20260322_002651-sgdqti2s
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run pretrain_mumucd_run1
+wandb: ⭐️ View project at https://wandb.ai/remiajr-cole-normale-sup-rieure-paris-saclay/Pix2Repv2-remote-sensing-pretraining
+wandb: 🚀 View run at https://wandb.ai/remiajr-cole-normale-sup-rieure-paris-saclay/Pix2Repv2-remote-sensing-pretraining/runs/sgdqti2s
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+Loading `train_dataloader` to estimate number of stepping batches.
+/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/connectors/data_connector.py:434: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=59` in the `DataLoader` to improve performance.
+┏━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━┓
+┃   ┃ Name            ┃ Type           ┃ Params ┃ Mode  ┃ FLOPs ┃
+┡━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+│ 0 │ backbone        │ UNet           │  135 M │ train │     0 │
+│ 1 │ projection_head │ ProjectionHead │  328 K │ train │     0 │
+└───┴─────────────────┴────────────────┴────────┴───────┴───────┘
+Trainable params: 135 M                                                         
+Non-trainable params: 0                                                         
+Total params: 135 M                                                             
+Total estimated model params size (MB): 541                                     
+Modules in train mode: 120                                                      
+Modules in eval mode: 0                                                         
+Total FLOPs: 0                                                                  
+/workspace/.miniconda3/lib/python3.13/site-packages/lightning/pytorch/trainer/connectors/data_connector.py:434: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=59` in the `DataLoader` to improve performance.

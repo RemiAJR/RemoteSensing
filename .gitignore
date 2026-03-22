@@ -9,3 +9,5 @@ runs/
 *.h5
 *.hdf5
 .DS_Store
+nohup.out
+uv.lock
