@@ -179,7 +179,14 @@ class Pix2RepPretrainingModule(L.LightningModule):
             lr=self.cfg.pretraining.lr_backbone,
         )
 
-        total_steps = self.trainer.estimated_stepping_batches
+        # Compute total steps from config to avoid Lightning iterating the
+        # entire train dataloader just to count batches.
+        import math
+        batch_size = self.cfg.data.batch_size_pretraining
+        n_cities = 63  # train split (~90% of 70 cities)
+        patches_per_city = 100
+        steps_per_epoch = math.ceil((n_cities * patches_per_city) / batch_size)
+        total_steps = steps_per_epoch * self.cfg.pretraining.num_epochs
         warmup_steps = int(0.05 * total_steps)
 
         warmup = torch.optim.lr_scheduler.LinearLR(

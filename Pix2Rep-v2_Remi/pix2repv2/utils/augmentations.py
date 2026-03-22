@@ -48,17 +48,20 @@ class RandomRescaleIntensity(tio.Transform):
     def apply_transform(self, subject):
         Imin = np.random.uniform(*self.Imin_range)
         Imax = np.random.uniform(*self.Imax_range)
-
-        # Safety: ensure valid ordering
         if Imin >= Imax:
             return subject
 
-        rescale = tio.RescaleIntensity(
-            out_min_max=(Imin, Imax),
-            percentiles=self.percentiles,
-        )
-
-        return rescale(subject)
+        for image in subject.get_images(intensity_only=True):
+            data = image.data.numpy()
+            lo = np.percentile(data, self.percentiles[0])
+            hi = np.percentile(data, self.percentiles[1])
+            if hi - lo < 1e-8:
+                continue
+            data = (data - lo) / (hi - lo)
+            data = data * (Imax - Imin) + Imin
+            np.clip(data, Imin, Imax, out=data)
+            image.set_data(torch.from_numpy(data))
+        return subject
 
 
 class HUWindow(IntensityTransform):

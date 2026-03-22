@@ -76,6 +76,8 @@ def run_training(
         max_epochs=cfg.pretraining.num_epochs,
         sync_batchnorm=sync_batchnorm,
         accumulate_grad_batches=1,
+        num_sanity_val_steps=0,
+        limit_val_batches=10,
         callbacks=[
             LearningRateMonitor(logging_interval="step"),
             TriggerWandbSyncLightningCallback(),
