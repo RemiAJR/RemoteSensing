@@ -2,3 +2,4 @@ val_ratio: 0.1
 batch_size_pretraining: 16
 batch_size_finetuning: 16
 random_seed: 42
+train_dataset_len: 6300  # overridden at runtime

@@ -1,6 +1,5 @@
 import glob
 import os
-import time
 
 import numpy as np
 import torch
@@ -56,33 +55,21 @@ def _augment_patch(patch_np: np.ndarray, cfg_transform) -> np.ndarray:
     return patch_np
 
 
-def _load_all_cubes(paths: list[str]) -> list[np.ndarray]:
-    """Load all city cubes into RAM at startup."""
-    cubes = []
-    t0 = time.time()
-    for i, p in enumerate(paths):
-        cube = np.load(p)
-        cubes.append(cube)
-        if (i + 1) % 10 == 0 or i == len(paths) - 1:
-            elapsed = time.time() - t0
-            logger.info(
-                f"  Loaded {i+1}/{len(paths)} cubes "
-                f"({sum(c.nbytes for c in cubes)/1e9:.1f} GB, {elapsed:.0f}s)"
-            )
-    return cubes
-
-
 class MUMUCD_PatchSSL(Dataset):
     """Patch-based SSL dataset for MUMUCD PRISMA hyperspectral images.
 
-    All city cubes are pre-loaded into RAM at init for instant patch access.
+    Uses pre-converted .npy files with lazy single-city cache (~2 GB).
+    Items are laid out sequentially by city (items 0-99 = city 0, etc.)
+    so that sequential access minimises file switches.
+
+    DDP-safe: uses DistributedSampler(shuffle=False) for ordered access.
+    Each worker caches 1 cube → 4 workers × 2 GB = 8 GB per DDP rank.
     """
 
     def __init__(
         self,
         cfg: dict,
         image_paths: list[str] | None = None,
-        cubes: list[np.ndarray] | None = None,
         data_folder_path: str = "/workspace/RemoteSensing/data/mumucd_npy",
         patches_per_image: int = 100,
         patch_size: int = 128,
@@ -106,24 +93,28 @@ class MUMUCD_PatchSSL(Dataset):
             "Run the NetCDF-to-npy conversion script first."
         )
 
-        # Load all cubes into RAM (or reuse already-loaded cubes)
-        if cubes is not None:
-            self.cubes = cubes
-        else:
-            logger.info(f"Loading {len(self.image_paths)} cubes into RAM...")
-            self.cubes = _load_all_cubes(self.image_paths)
+        # Lazy single-city cache: one cube in RAM at a time (~2 GB)
+        self._cached_city_idx: int | None = None
+        self._cached_cube: np.ndarray | None = None
 
-        total_gb = sum(c.nbytes for c in self.cubes) / 1e9
         logger.info(
-            f"MUMUCD PRISMA: {len(self.cubes)} cities in RAM ({total_gb:.1f} GB), "
+            f"MUMUCD PRISMA: {len(self.image_paths)} cities (lazy .npy), "
             f"{patches_per_image} patches each -> {len(self)} samples/epoch"
         )
 
     def __len__(self):
         return len(self.image_paths) * self.patches_per_image
 
+    def _get_cube(self, city_idx: int) -> np.ndarray:
+        if self._cached_city_idx != city_idx:
+            # Memory-map the city cube so workers don't eagerly read ~2 GB
+            # from disk on every city switch. The patch is copied out later.
+            self._cached_cube = np.load(self.image_paths[city_idx], mmap_mode="r")
+            self._cached_city_idx = city_idx
+        return self._cached_cube
+
     def _sample_patch(self, city_idx: int) -> np.ndarray:
-        cube = self.cubes[city_idx]
+        cube = self._get_cube(city_idx)
         img_h, img_w, _ = cube.shape
         ps = self.patch_size
         row = np.random.randint(0, img_h - ps + 1)
@@ -165,30 +156,20 @@ def create_train_val_subsets(
     patch_dataset: MUMUCD_PatchSSL,
     cfg: dict = None,
 ) -> tuple[MUMUCD_PatchSSL, MUMUCD_PatchSSL]:
-    """Split by city. Reuses already-loaded cubes to avoid double loading."""
+    """Split by city (not by random index) to keep sequential file access."""
     all_paths = list(patch_dataset.image_paths)
-    all_cubes = list(patch_dataset.cubes)
-
-    # Shuffle cities deterministically
     rng = np.random.RandomState(cfg.data.random_seed)
-    indices = list(range(len(all_paths)))
-    rng.shuffle(indices)
+    rng.shuffle(all_paths)
 
     n_val = max(1, int(round(cfg.data.val_ratio * len(all_paths))))
-    val_idx = indices[:n_val]
-    train_idx = indices[n_val:]
-
-    train_paths = [all_paths[i] for i in train_idx]
-    train_cubes = [all_cubes[i] for i in train_idx]
-    val_paths = [all_paths[i] for i in val_idx]
-    val_cubes = [all_cubes[i] for i in val_idx]
+    val_paths = all_paths[:n_val]
+    train_paths = all_paths[n_val:]
 
     logger.info(f"Train: {len(train_paths)} cities, Val: {len(val_paths)} cities")
 
     train_ds = MUMUCD_PatchSSL(
         cfg=cfg,
         image_paths=train_paths,
-        cubes=train_cubes,
         patches_per_image=patch_dataset.patches_per_image,
         patch_size=patch_dataset.patch_size,
         apply_augmentations=True,
@@ -196,7 +177,6 @@ def create_train_val_subsets(
     val_ds = MUMUCD_PatchSSL(
         cfg=cfg,
         image_paths=val_paths,
-        cubes=val_cubes,
         patches_per_image=patch_dataset.patches_per_image,
         patch_size=patch_dataset.patch_size,
         apply_augmentations=False,
@@ -209,8 +189,16 @@ def build_patch_loader(
     batch_size: int,
     shuffle: bool,
 ) -> DataLoader:
-    num_workers = 8
-    logger.info(f"Using num_workers = {num_workers}")
+    # Lightning adds DistributedSampler automatically in DDP mode.
+    # We pass shuffle=False so that Lightning's sampler also uses shuffle=False,
+    # keeping access sequential by city for cache-friendly I/O.
+    num_workers = 2
+    prefetch_factor = 1
+
+    logger.info(
+        f"DataLoader: num_workers={num_workers}, prefetch_factor={prefetch_factor}, "
+        f"batch_size={batch_size}"
+    )
 
     return DataLoader(
         patch_dataset,
@@ -219,5 +207,5 @@ def build_patch_loader(
         num_workers=num_workers,
         pin_memory=True,
         persistent_workers=True,
-        prefetch_factor=2,
+        prefetch_factor=prefetch_factor,
     )

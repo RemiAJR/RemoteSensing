@@ -112,7 +112,17 @@ class Pix2RepPretrainingModule(L.LightningModule):
         monitoring = self._compute_monitoring_metrics(dense_features_1, dense_features_2)
 
         batch_size = self.cfg.data.batch_size_pretraining
-        sync_dist = stage == "val"
+        sync_dist = True
+        if stage == "train":
+            self.log(
+                "train_loss_step",
+                loss,
+                on_step=True,
+                on_epoch=False,
+                prog_bar=True,
+                sync_dist=False,
+                batch_size=batch_size,
+            )
         self.log(
             f"{stage}_loss",
             loss,
@@ -179,13 +189,13 @@ class Pix2RepPretrainingModule(L.LightningModule):
             lr=self.cfg.pretraining.lr_backbone,
         )
 
-        # Compute total steps from config to avoid Lightning iterating the
-        # entire train dataloader just to count batches.
+        # Compute total steps from dataset length stored in cfg at launch time,
+        # avoiding Lightning iterating the entire dataloader to count batches.
         import math
         batch_size = self.cfg.data.batch_size_pretraining
-        n_cities = 63  # train split (~90% of 70 cities)
-        patches_per_city = 100
-        steps_per_epoch = math.ceil((n_cities * patches_per_city) / batch_size)
+        dataset_len = self.cfg.data.train_dataset_len
+        world_size = self.trainer.world_size
+        steps_per_epoch = math.ceil(dataset_len / (batch_size * world_size))
         total_steps = steps_per_epoch * self.cfg.pretraining.num_epochs
         warmup_steps = int(0.05 * total_steps)
 

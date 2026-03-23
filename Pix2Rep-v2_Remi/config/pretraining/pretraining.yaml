@@ -6,6 +6,8 @@ num_epochs: 200
 n_channels: 230
 lr_backbone: 5e-4
 lambda_barlow: 5.e-3 # same as BT original paper
+log_every_n_steps: 5
+step_checkpoint_every_n_train_steps: 50
 
 # Projection head parameters
 n_feature_maps_mlp: 256
@@ -44,6 +46,4 @@ pretraining_transform:
   random_field_coef: 0.9   
   random_field_p: 0.75     
   random_invert_p: 0.35    
-
-
 
